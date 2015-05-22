@@ -1,0 +1,77 @@
+---
+title: "Machine Learning: Course Project"
+output: 
+  html_document:
+    keep_md: true
+---  
+### Author:  April Broome
+### Date: 05-22-15  
+## Overview:  
+###  In this course project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell to predict the manner in which 6 participants performed barbell lifts. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The training dataset contains the variable "classe" which is the outcome we are to predict with possible values: A, B, C, D, E.
+
+## Read input files:
+```{r CodeChunk1, echo=TRUE}
+training <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                     na.strings=c("NA",""), stringsAsFactors = FALSE, header=TRUE)
+testing <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+                    na.strings=c("NA",""), stringsAsFactors = FALSE, header=TRUE)
+```
+## Clean the Data:  
+### There are many columns in the training dataset which consist of mostly NA values.  To reduce processing time and improve the validity of the modeling, I determine which columns to keep by checking for more than 50% of the rows in that column populated (not NA).  I also removed columns 1-7 which contained data irrelevant to the analysis like X, subject name, timestamp, etc.
+```{r CodeChunk2, echo=TRUE}
+keeperCols <- which((colSums(!is.na(training)) >= 0.5*nrow(training)))
+keeperCols <- keeperCols[8:60]
+reducedTraining <- training[,keeperCols]
+reducedTraining$classe <- as.factor(reducedTraining$classe)
+reducedTesting <- testing[,keeperCols]
+```
+
+## Cross Validation:
+### Initiate the Caret package and use the createDataPartition function to split out the original training dataset into a training set (75% of the data) and a testing (validation) set (25% of the data).  
+```{r CodeChunk3, echo=TRUE, warning=FALSE, message=FALSE}
+library(caret)
+set.seed(100)
+trainingSet <- createDataPartition(reducedTraining$classe, p=.75, list=F)
+myTrain <- reducedTraining[trainingSet,]
+myTest <- reducedTraining[-trainingSet,]
+```
+
+## Create a Machine Learning Model: 
+### Random Forest Models have a reputation for being one of the best machine learning models so I use the "rf" method of the Caret package with the default settings.  Since creating the model takes such a long time, I check to see if an existing model file is available to use before running the "train" function.  
+```{r CodeChunk4, echo=TRUE}
+if (!file.exists("./rfFit.RData")) {
+  rfFit <- train(classe ~., data = myTrain, method = "rf")
+  save(rfFit, file="./rfFit.RData")
+} else  {
+  load("./rfFit.RData")
+}
+```
+
+## Run a Prediction
+### Using the Random Forest model I just created, I'll bring in the test (or validation) data reserved from the original training set to run against my machine learning model and generate a set of predicted values for "classe".
+```{r CodeChunk6, echo=TRUE, warning=FALSE, message=FALSE}
+myPrediction <- predict(rfFit, newdata=myTest)
+```
+
+## Out-of-Sample Error Analysis
+### Based upon the reported accuracy of the Random Forest model, I estimate that my model will be at least 90% accurate.  To determine the actual accuracy of the machine learning model I created, I generate a Confusion Matrix to measure the error rate on the test (or out-of-sample) data.  The Confusion Matrix compares the estimates of classe that my machine learning model developed against the actual "classe"" values from the test data.
+```{r CodeChunk7, echo=TRUE}
+myConfMatrix <- confusionMatrix(myPrediction, myTest$classe)
+myConfMatrix$overall[1]
+```
+### As you can see, the actual accuracy of my random forest model is 99%.
+
+## Run model with Actual Test Data
+### With a high accuracy rate from my model, I'm ready to run my model against the original test dataset provided.  I use the function provided to create individual files for each of 20 cases and use these files to submit for grading.
+```{r CodeChunk8, echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+answers <- predict(rfFit, newdata=reducedTesting)
+pml_write_files(answers)
+```
